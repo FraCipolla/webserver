@@ -245,10 +245,10 @@ int			VirtServ::handleClient(int fd, std::string &request)
 			return (1);
 		}
 		it->headers = request;
-		std::cout << it->headers << std::endl;
 		if (it->body.size() > 0 && findKey(it->request.headers, "Transfer-Encoding")->second == "chunked") {
-			it->chunk_size = strtoul(it->body.c_str(), NULL, 16);
-			if (it->chunk_size > 0 && it->body.find("\r\n") == it->body.npos) {
+			std::string chunkSize = it->body.substr(0, it->body.find("\r\n"));
+			it->chunk_size = strtoul(chunkSize.c_str(), NULL, 16);
+			if (it->chunk_size > 0 && it->body.find("\r\n") != it->body.npos) {
 				it->body = it->body.substr(it->body.find_first_of("\r\n"));
 				char buffer[1] = {0};
 				while (1) {
@@ -261,7 +261,7 @@ int			VirtServ::handleClient(int fd, std::string &request)
 					memset(buffer, 0, sizeof buffer);
 				}
 			}
-			else if (it->chunk_size > 0) {
+			if (it->chunk_size > 0) {
 				it->body = it->body.substr(it->body.find("\r\n") + 2);
 				it->chunk_size = it->chunk_size - it->body.size();
 			}
@@ -525,7 +525,6 @@ int			VirtServ::launchCGI(t_connInfo & conn)
 			std::string answer = "HTTP/1.1 200 OK\r\nServer: webserv\r\n" + contentType;
 			answer += "\r\nContent-Length: "; answer.append(outputSize.str());
 			answer += "\r\nConnection: close\r\n\r\n";
-			std::cout << answer << std::endl;
 			answer += output;
 			conn.body.clear();
 			send(conn.fd, answer.c_str(), answer.size(), 0);
@@ -591,7 +590,6 @@ void		VirtServ::correctPath(std::string & filename, t_connInfo & conn)
 
 bool		VirtServ::tryGetResource(std::string filename, t_connInfo conn)
 {
-	// std::cout << "------TRY GET RESOURCE------\n";
 	std::string fullPath = conn.config.root;
 	char rootPath[conn.config.root.size()];
 	std::string	rootPath2;
@@ -793,8 +791,6 @@ void		VirtServ::defaultAnswerError(int err, t_connInfo conn)
 	else
 		tmpString += "\r\n";
 	send(conn.fd, tmpString.c_str(), tmpString.size(), 0);
-	std::cout << "SENT RESPONSE" << std::endl;
-	std::cout << tmpString << std::endl;
 }
 
 /*
@@ -896,8 +892,6 @@ void		VirtServ::answerAutoindex(std::string fullPath, DIR *directory, t_connInfo
 	
 	send(conn.fd, tmpString.c_str(), tmpString.size(), 0);
 
-	static int print = 0;
-	std::cout << print++ << std::endl;
 }
 
 /*
@@ -906,7 +900,6 @@ void		VirtServ::answerAutoindex(std::string fullPath, DIR *directory, t_connInfo
 
 void		VirtServ::answer(std::string fullPath, struct dirent *dirent, t_connInfo conn)
 {
-	std::cout << "------ANSWER------\n";
 	std::stringstream stream;
 	std::string tmpString;
 	std::string tmpBody;
@@ -925,7 +918,6 @@ void		VirtServ::answer(std::string fullPath, struct dirent *dirent, t_connInfo c
 	stream << resource.rdbuf();
 	tmpBody = stream.str();
 	stream.str("");
-	std::cout << "QUI" << findKey(conn.request.headers, "Cookie")->second << std::endl;
 	if (!std::strncmp(dirent->d_name, "registered.html", std::strlen(dirent->d_name) && findKey(conn.request.headers, "Cookie")->second.find("name=") != findKey(conn.request.headers, "Cookie")->second.npos) && conn.set_cookie == false && findKey(conn.request.headers, "Cookie")->second.find("name=") != findKey(conn.request.headers, "Cookie")->second.npos)
 	{
 		std::string	value;
@@ -1003,8 +995,6 @@ void		VirtServ::answer(std::string fullPath, struct dirent *dirent, t_connInfo c
 	}
 	else
 		send(conn.fd, responseString.c_str(), responseString.size(), 0);
-	std::cout << "SENT RESPONSE" << std::endl;
-	std::cout << responseString << std::endl;
 }
 
 bool		isRegex(std::string path, t_config _config)
@@ -1228,7 +1218,7 @@ int			VirtServ::execPut(t_connInfo & conn)
 				filename.append(conn.request.line.substr(1, conn.request.line.find_first_of(" ") - 1));
 			FILE* ofs = fopen(filename.c_str(), "wb+");
 			for (size_t i = 0; i < conn.body.size(); i++)
-				fwrite(&conn.body.at(i), 1, sizeof(char), ofs);
+				fwrite(&conn.body[i], 1, sizeof(conn.body[i]), ofs);
 			fclose(ofs);
 			conn.body.clear();
 			defaultAnswerError(201,conn);

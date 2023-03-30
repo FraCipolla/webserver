@@ -77,7 +77,6 @@ bool    Server::startListen()
 	
 	typedef std::vector<VirtServ>::iterator iterator;
 	for(iterator it = _virtServs.begin(); it < _virtServs.end(); it++) {
-		std::cout << it->getConfig().port << std::endl;
 		vServSock.push(it->getSocket());
 	}
 	fd_size = vServSock.size();
