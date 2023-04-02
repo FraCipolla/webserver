@@ -71,7 +71,7 @@ bool    Server::startListen()
 	std::stack<int>									vServSock;
 	int												fd_size, fd_count = 0, nRead = 0, tmpListener, newFd;
 	std::vector<std::pair<std::string, bool> >		requests (1000, std::make_pair("", false));
-	unsigned char									buffer[512];
+	unsigned char									buffer;
 	socklen_t 										addrlen;
 	struct sockaddr_storage 						remoteaddr;
 	
@@ -117,7 +117,7 @@ bool    Server::startListen()
 				} else {
 					int clientFd = _pfds[i].fd;
 					if (requests[clientFd].second == false) {
-						nRead = recv(clientFd, buffer, sizeof buffer, 0);
+						nRead = recv(clientFd, &buffer, sizeof(unsigned char), 0);
 						if (nRead <= 0) {
 							if (nRead < 0)
 								perror ("recv");
@@ -126,9 +126,7 @@ bool    Server::startListen()
 							close(clientFd);
 							del_from_pfds(_pfds, i, &fd_count);
 						}
-						for (int j = 0; j < nRead; j++)
-							requests[clientFd].first.push_back(buffer[j]);
-						memset(buffer, 0, nRead);
+						requests[clientFd].first.push_back(buffer);
 						if (requests[clientFd].first.find("\r\n\r\n") != requests[clientFd].first.npos)
 							requests[clientFd].second = true;
 					}

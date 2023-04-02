@@ -218,14 +218,8 @@ int			VirtServ::handleClient(int fd, std::string &request)
 	if (it == _connections.end())
 		return 0;
 
-	struct linger 	l;
-	l.l_onoff  = 1;
-	l.l_linger = 0;
 	if (it->request.method == "")
 	{
-		it->body = request.substr(request.find("\r\n\r\n") + 4, request.npos);
-		request = request.substr(0, request.find("\r\n\r\n") + 4);
-
 		if (!this->readRequest(*it, request))
 		{
 			defaultAnswerError(400, *it);
@@ -245,27 +239,6 @@ int			VirtServ::handleClient(int fd, std::string &request)
 			return (1);
 		}
 		it->headers = request;
-		if (it->body.size() > 0 && findKey(it->request.headers, "Transfer-Encoding")->second == "chunked") {
-			std::string chunkSize = it->body.substr(0, it->body.find("\r\n"));
-			it->chunk_size = strtoul(chunkSize.c_str(), NULL, 16);
-			if (it->chunk_size > 0 && it->body.find("\r\n") != it->body.npos) {
-				it->body = it->body.substr(it->body.find_first_of("\r\n"));
-				char buffer[1] = {0};
-				while (1) {
-					recv(it->fd, buffer, sizeof buffer, 0);
-					it->body.append(buffer);
-					if (it->body.find("\r\n") != it->body.npos) {
-						it->body.clear();
-						break ;
-					}
-					memset(buffer, 0, sizeof buffer);
-				}
-			}
-			if (it->chunk_size > 0) {
-				it->body = it->body.substr(it->body.find("\r\n") + 2);
-				it->chunk_size = it->chunk_size - it->body.size();
-			}
-		}
 		it->buffer.clear();
 	}
 
@@ -275,7 +248,6 @@ int			VirtServ::handleClient(int fd, std::string &request)
 		if (method[i] == it->request.method) {
 			if ((this->*execMethod[i])(*it) == 1) {
 				delete it->location;
-				setsockopt(it->fd, SOL_SOCKET, SO_LINGER, &l, sizeof(l));
 				close(it->fd);
 				_connections.erase(it);
 				return 1;
@@ -522,17 +494,30 @@ int			VirtServ::launchCGI(t_connInfo & conn)
 			output = output.substr(output.find("\r\n\r\n") + 4, output.npos);
 			std::stringstream outputSize;
 			outputSize << output.size();
-			std::string answer = "HTTP/1.1 200 OK\r\nServer: webserv\r\n" + contentType;
-			answer += "\r\nContent-Length: "; answer.append(outputSize.str());
-			answer += "\r\nConnection: close\r\n\r\n";
-			answer += output;
-			conn.body.clear();
-			send(conn.fd, answer.c_str(), answer.size(), 0);
-			usleep(50000);
-			return 1;
+			std::string _answer = "HTTP/1.1 200 OK\r\nServer: webserv\r\n" + contentType;
+			_answer += "\r\nDate: " + getDateTime();
+			_answer += "\r\nContent-Length: "; _answer.append(outputSize.str());
+			_answer += "\r\nConnection: close\r\n\r\n";
+			_answer += output;
+			size_t size = _answer.size();
+			unsigned char *answer = (unsigned char *)malloc(sizeof(unsigned char) * size);
+			memcpy(answer, _answer.c_str(), size);
+			unsigned char *tmp = answer;
+			while (1) {
+				if (size <= 0x8000) {
+					send(conn.fd, answer, size, 0);
+					free(tmp);
+					while (recv(conn.fd, NULL, 0, 0) < 0)
+						usleep(50);
+					return 1;
+				}
+				send(conn.fd, answer, 0x8000, 0);
+				answer += 0x8000;
+				size -= 0x8000;
+			}
 		}
 	}
-	return 0;
+	return 1;
 }
 
 void		VirtServ::correctPath(std::string & filename, t_connInfo & conn)
@@ -1157,6 +1142,12 @@ std::string VirtServ::defineFileType(char *filename)
 
 int 		VirtServ::execGet(t_connInfo & conn)
 {
+	struct linger 	l;
+
+	l.l_onoff  = 1;
+	l.l_linger = 0;
+
+	setsockopt(conn.fd, SOL_SOCKET, SO_LINGER, &l, sizeof(l));
 	std::vector<std::pair<std::string, std::string> >::iterator it;
 	for (it = _storeReq.begin(); it != _storeReq.end(); it++) {
 		if (it->first == conn.headers) {
@@ -1171,6 +1162,12 @@ int 		VirtServ::execGet(t_connInfo & conn)
 
 int			VirtServ::execHead(t_connInfo & conn)
 {
+	struct linger 	l;
+
+	l.l_onoff  = 1;
+	l.l_linger = 0;
+
+	setsockopt(conn.fd, SOL_SOCKET, SO_LINGER, &l, sizeof(l));
 	std::vector<std::pair<std::string, std::string> >::iterator it;
 	for (it = _storeReq.begin(); it != _storeReq.end(); it++) {
 		if (it->first == conn.headers) {
@@ -1179,11 +1176,11 @@ int			VirtServ::execHead(t_connInfo & conn)
 			return 1;
 		}
 	}
-
+	
 	tryFiles(conn); conn.request.method.clear(); return 1;
 }
 
-int			VirtServ::execPut(t_connInfo & conn)
+int VirtServ::execPut(t_connInfo & conn)
 {	
 	if (conn.config.allowedMethods.size() && std::find(conn.config.allowedMethods.begin(), conn.config.allowedMethods.end(), "POST") == conn.config.allowedMethods.end())
 	{
@@ -1492,24 +1489,4 @@ void VirtServ::print_table() {
 		std::cout << it->first << ": " << it->second << std::endl;
 	}
 	std::cout << "\n----------------\n";
-}
-
-bool VirtServ::sendAll(int socket, const char *buf, size_t *len)
-{
-	size_t total = 0;	  // how many bytes we've sent
-	int bytesleft = *len; // how many we have left to send
-	int n;
-
-	while (total < *len)
-	{
-		n = send(socket, buf + total, bytesleft, 0);
-		if (n == -1)
-			break;
-		total += n;
-		bytesleft -= n;
-	}
-
-	*len = total; // return number actually sent here
-
-	return (n == -1 ? false : true);
 }

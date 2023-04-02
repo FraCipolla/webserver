@@ -62,9 +62,8 @@ char					**Cgi::getEnv() const {
 std::string		Cgi::executeCgi(const std::string & script, const char *path)
 {
     pid_t   pid;
-    int     std_cpy[2] = { dup(0), dup(1) };
     char    **env = this->getEnv();
-    std::string _retBody = "";
+    std::string _retBody;
 
     // UNCOMMENT TO PRINT ENV
     // int i = 0;
@@ -97,7 +96,7 @@ std::string		Cgi::executeCgi(const std::string & script, const char *path)
     }
     else {
 		waitpid(-1, NULL, 0);
-        usleep(300000);
+        // usleep(300000);
 
         lseek(fd_out, 0, SEEK_SET);
 
@@ -114,12 +113,29 @@ std::string		Cgi::executeCgi(const std::string & script, const char *path)
 	close(fd_in);
 	close(fd_out);
 
-    dup2(std_cpy[0], 0);
-    dup2(std_cpy[1], 1);
-
     for (size_t i = 0; env[i]; i++)
 		delete[] env[i];
 	delete[] env;
-    // std::cout << "RET_BODY\n" + _retBody << std::endl;
+	// std::string code;
+	// std::string contentType;
+	// if (_retBody.find("Status: ") != _retBody.npos) {
+	// 		code = _retBody.substr(_retBody.find("Status: ") + 8, _retBody.npos);
+	// 		code = code.substr(0, code.find_first_of("\n"));
+	// 	}
+	// 	if (_retBody.find("Content-Type: ") != _retBody.npos) {
+	// 		contentType = _retBody.substr(_retBody.find("Content-Type ") + 17, _retBody.npos);
+	// 		contentType = contentType.substr(0, contentType.find_first_of(";"));
+	// 	}
+	// 	_retBody = _retBody.substr(_retBody.find("\r\n\r\n") + 4, _retBody.npos);
+	// 	std::stringstream _retBodySize;
+	// 	_retBodySize << _retBody.size();
+	// 	std::string answer = "HTTP/1.1 200 OK\r\nServer: webserv\r\n" + contentType;
+	// 	answer += "\r\nContent-Length: "; answer.append(_retBodySize.str());
+	// 	answer += "\r\nConnection: close\r\n\r\n";
+	// 	answer += _retBody;
+	// 	conn.body.clear();
+	// 	send(conn.fd, answer.c_str(), answer.size(), 0);
+	// 	usleep(100000);
+
     return (_retBody);
 }

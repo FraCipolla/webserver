@@ -63,7 +63,6 @@ class VirtServ
 		int													execHead(t_connInfo & conn);
 		int													execDelete(t_connInfo & conn);
 		
-		bool												sendAll(int socket, const char *buf, size_t *len);
 		int 												keepConnectionAlive(int fd);
 		int													launchCGI(t_connInfo & conn);
 
